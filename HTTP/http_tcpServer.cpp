@@ -9,8 +9,9 @@
 #include <sstream>
 #include <string.h>
 #include <string>
+#include <pthread.h>
 
-#define MAX_BUFFER 30720;
+#define MAX_BUFFER_SIZE 30720
 
 class TCPServer
 {
@@ -38,32 +39,42 @@ class TCPServer
             logMessage(ss.str());
 
             int nBytesRead;
+            char cBuffer[MAX_BUFFER_SIZE];
             while(true)
             {
                 logMessage("===== Waiting for a new connection ===== \n\n\n");
                 acceptConnection(mNewSocket);
 
+                mPID = fork();
+                if(mPID < 0)
+                    exitWithError("Error on fork. Exiting.");
+                if(mPID == 0)
+                {
+                    bzero(cBuffer,MAX_BUFFER_SIZE); // initialize the buffer
+                    nBytesRead = read(mNewSocket,(char*)&cBuffer,sizeof(cBuffer));
+                    if(nBytesRead < 0)
+                        exitWithError("Failed to read bytes from client socket connection. Exiting.");
 
-                const int BUFFER_SIZE = MAX_BUFFER;
-                char cBuffer[BUFFER_SIZE] = {0}; // initialize the buffer
-
-                nBytesRead += recv(mSocket,(char*)&cBuffer,sizeof(cBuffer),0);
-                if(nBytesRead < 0)
-                    exitWithError("Failed to read bytes from client socket connection. Exiting.");
+                    std::ostringstream ss;
+                    ss << "----- Recieved request from client -----\n\n";
                 
-                std::ostringstream ss;
-                ss << "----- Recieved request from client -----\n\n";
-                logMessage(ss.str());
-
-                sendResponse();
-                close(mNewSocket);
+                    logMessage(cBuffer);
+                    logMessage(ss.str());
+                
+                    bzero(cBuffer,MAX_BUFFER_SIZE);
+                    sendResponse();
+                }
+                else
+                    close(mNewSocket);
             }
+            close(mSocket);
         }
 
     private:
         std::string sIPAddress; // *provided in constructor
         int nPort; // *provided in constructor
         int mSocket, mNewSocket;
+        int mPID;
         long lIncomingMessage;
         struct sockaddr_in mSocketAddress;
         std::string sServerMessage;
@@ -104,13 +115,11 @@ class TCPServer
         {
             int nBytesWritten;
             long lTotalBytesWritten {0};
-            while(lTotalBytesWritten < sServerMessage.size())
-            {
-                nBytesWritten = write(mNewSocket,sServerMessage.c_str(),sServerMessage.size());
-                if(nBytesWritten < 0)
-                    break;
-                lTotalBytesWritten += nBytesWritten;                            
-            }
+            
+            nBytesWritten = write(mNewSocket,sServerMessage.c_str(),sServerMessage.size());
+            if(nBytesWritten < 0)
+                exitWithError("Failed to write bytes to socket. Exiting.");
+            lTotalBytesWritten += nBytesWritten;                            
 
             if(nBytesWritten == sServerMessage.size())
             {
@@ -135,6 +144,9 @@ class TCPServer
                     << ntohs(mSocketAddress.sin_port);
                 exitWithError(ss.str());
             }
+            logMessage("Client successfully connected!");
+
+            //--> continue to recieving bytes
         }
 
 

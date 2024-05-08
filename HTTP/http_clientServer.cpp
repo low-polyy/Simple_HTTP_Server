@@ -11,6 +11,8 @@
 #include <string.h>
 #include <string>
 
+#define MAX_BUFFER_SIZE 30720
+
 class ClientServer
 {
     public:
@@ -31,7 +33,10 @@ class ClientServer
             if(connect(mSocket,(struct sockaddr*) &mSocketAddress, sizeof(mSocketAddress)) < 0)
                 exitWithError("Error establishing connection with HTTP server. Exiting");
             else
+            {
                 logMessage("Successfully established a connection with the server.");
+                sendRequest();
+            }
         }
     private:
         std::string sIPAddress;
@@ -69,7 +74,31 @@ class ClientServer
             mSocketAddress.sin_family = AF_INET;
             bcopy((char*)mServer->h_addr, (char*)&mSocketAddress.sin_addr.s_addr, mServer->h_length);
             mSocketAddress.sin_port = htons(nPort);
+        }
 
+        void sendRequest()
+        {
+            while(true)
+            {
+                int nBytesWritten, nBytesRead;
+                char cBuffer[MAX_BUFFER_SIZE];
+                // read message from std::in (just as a test for now...)
+                std::cout << ">> Enter your message: ";
+                std::string sData;
+                std::getline(std::cin, sData);
+                memset(&cBuffer, 0, sizeof(cBuffer)); // clear buffer by filling cBuffer with 0, initialize
+                strcpy(cBuffer, sData.c_str()); // copy from sData to cBuffer
+
+                nBytesWritten = write(mSocket, cBuffer, strlen(cBuffer));
+                if(nBytesWritten < 0)
+                    exitWithError("Error writing to socket. Exiting.");
+                
+                bzero(cBuffer,MAX_BUFFER_SIZE);
+                nBytesRead = read(mSocket,cBuffer,MAX_BUFFER_SIZE);
+                if(nBytesRead < 0)
+                    exitWithError("Error reading response from server. Exiting.");
+                logMessage(cBuffer);
+            }
         }
 
 
