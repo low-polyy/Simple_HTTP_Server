@@ -40,7 +40,7 @@ class ClientServer
         }
     private:
         std::string sIPAddress;
-        int nPort;
+        std::uint16_t nPort;
         int mSocket;
         struct sockaddr_in mSocketAddress;
         struct hostent *mServer;

@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/epoll.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -10,8 +11,11 @@
 #include <string.h>
 #include <string>
 #include <pthread.h>
+#include <thread>
 
-#define MAX_BUFFER_SIZE 30720
+#define MAX_BUFFER_SIZE 4096
+#define THREAD_POOL_SIZE 5
+#define MAX_EVENTS 10000
 
 class TCPServer
 {
@@ -37,6 +41,16 @@ class TCPServer
                 << " PORT: " << ntohs(mSocketAddress.sin_port)
                 << "*** \n\n";
             logMessage(ss.str());
+
+            // create epoll instance to monitor I/O on socket fd
+            int nEpoll = epoll_create1(0);
+            if(nEpoll < 0)
+                exitWithError("Failed to create epoll instance. Exiting.");
+            // add server's socket to epoll for monitoring read activities
+            mEpollEvent.events = EPOLLIN;
+            mEpollEvent.data.fd = mSocket;
+            epoll_ctl(nEpoll,EPOLL_CTL_ADD,mSocket,&mEpollEvent);
+
 
             int nBytesRead;
             char cBuffer[MAX_BUFFER_SIZE];
@@ -72,12 +86,19 @@ class TCPServer
 
     private:
         std::string sIPAddress; // *provided in constructor
-        int nPort; // *provided in constructor
+        std::uint16_t nPort; // *provided in constructor
         int mSocket, mNewSocket;
         int mPID;
-        long lIncomingMessage;
         struct sockaddr_in mSocketAddress;
         std::string sServerMessage;
+
+        std::thread mListenerThread;
+        std::thread mWorkerThread[THREAD_POOL_SIZE];
+        int mWorkerEpoll[THREAD_POOL_SIZE];
+        struct epoll_event mEpollEvent;
+
+
+
 
         void exitWithError(const std::string& s_message)
         {
