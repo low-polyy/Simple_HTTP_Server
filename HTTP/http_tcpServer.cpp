@@ -12,17 +12,20 @@
 #include <string>
 #include <pthread.h>
 #include <thread>
+#include <vector>
+#include <random>
 
 #define MAX_BUFFER_SIZE 4096
-#define THREAD_POOL_SIZE 5
-#define MAX_EVENTS 10000
 
 class TCPServer
 {
     public:
         TCPServer(std::string ip_address, int portno)
-        : sIPAddress(ip_address), nPort(portno)
+        : sIPAddress(ip_address), nPort(portno), 
+        mRand(std::chrono::steady_clock::now().time_since_epoch().count()),
+        mSleepTimes(10,100)
         {
+        
             socketSetup(); // start server
             logMessage("----- Successfully established socket on server -----.");
         }
@@ -32,8 +35,10 @@ class TCPServer
             closeServer();
         }
 
-        void startListen()
+
+        void startServer()
         {
+            // have the server listen for incoming client connections
             if(listen(mSocket,20) < 0)
                 exitWithError("Failed to listen on given socket. Exiting.");
             std::ostringstream ss;
@@ -42,15 +47,6 @@ class TCPServer
                 << "*** \n\n";
             logMessage(ss.str());
 
-            // create epoll instance to monitor I/O on socket fd
-            int nEpoll = epoll_create1(0);
-            if(nEpoll < 0)
-                exitWithError("Failed to create epoll instance. Exiting.");
-            // add server's socket to epoll for monitoring read activities
-            mEpollEvent.events = EPOLLIN;
-            mEpollEvent.data.fd = mSocket;
-            epoll_ctl(nEpoll,EPOLL_CTL_ADD,mSocket,&mEpollEvent);
-
 
             int nBytesRead;
             char cBuffer[MAX_BUFFER_SIZE];
@@ -58,7 +54,6 @@ class TCPServer
             {
                 logMessage("===== Waiting for a new connection ===== \n\n\n");
                 acceptConnection(mNewSocket);
-
                 mPID = fork();
                 if(mPID < 0)
                     exitWithError("Error on fork. Exiting.");
@@ -71,16 +66,16 @@ class TCPServer
 
                     std::ostringstream ss;
                     ss << "----- Recieved request from client -----\n\n";
-                
                     logMessage(cBuffer);
                     logMessage(ss.str());
-                
+
                     bzero(cBuffer,MAX_BUFFER_SIZE);
                     sendResponse();
                 }
                 else
                     close(mNewSocket);
             }
+            // terminate connection
             close(mSocket);
         }
 
@@ -88,16 +83,12 @@ class TCPServer
         std::string sIPAddress; // *provided in constructor
         std::uint16_t nPort; // *provided in constructor
         int mSocket, mNewSocket;
-        int mPID;
         struct sockaddr_in mSocketAddress;
         std::string sServerMessage;
+        int mPID;
 
-        std::thread mListenerThread;
-        std::thread mWorkerThread[THREAD_POOL_SIZE];
-        int mWorkerEpoll[THREAD_POOL_SIZE];
-        struct epoll_event mEpollEvent;
-
-
+        std::mt19937 mRand;
+        std::uniform_int_distribution<int> mSleepTimes;
 
 
         void exitWithError(const std::string& s_message)
@@ -124,13 +115,13 @@ class TCPServer
             mSocketAddress.sin_addr.s_addr = inet_addr(sIPAddress.c_str()); // ip address
             mSocketAddress.sin_port = htons(nPort); // port number in network byte order
 
-            // tie socket address to a given socket fd
+            // bind socket address to a given socket fd
             if(bind(mSocket, (struct sockaddr*)&mSocketAddress, sizeof(mSocketAddress)) < 0)
                 exitWithError("Error on binding socket to local address. Exiting.");
 
             return mSocket;
-            // --> continue by listen()
         }
+
 
         void sendResponse()
         {
@@ -155,9 +146,10 @@ class TCPServer
 
         void acceptConnection(int &new_socket)
         {
-            socklen_t nSocketAddress_len = sizeof(mSocketAddress); 
+            socklen_t nSocketAddress_len = sizeof(mSocketAddress);
+            // accept connection from client
             mNewSocket = accept(mSocket, (sockaddr*)&mSocketAddress,&nSocketAddress_len);
-            if(mNewSocket < 0)
+            if(mSocket < 0)
             {
                 std::ostringstream ss;
                 ss << "Server failed to accept incoming connection from ADDRESS: " 
@@ -166,8 +158,6 @@ class TCPServer
                 exitWithError(ss.str());
             }
             logMessage("Client successfully connected!");
-
-            //--> continue to recieving bytes
         }
 
 
@@ -183,6 +173,6 @@ class TCPServer
 int main()
 {
     TCPServer myServer = TCPServer("127.0.0.1",8080);
-    myServer.startListen();
+    myServer.startServer();
     return 0;
 }

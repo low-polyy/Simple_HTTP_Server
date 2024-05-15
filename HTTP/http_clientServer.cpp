@@ -11,7 +11,7 @@
 #include <string.h>
 #include <string>
 
-#define MAX_BUFFER_SIZE 30720
+#define MAX_BUFFER_SIZE 4096
 
 class ClientServer
 {
