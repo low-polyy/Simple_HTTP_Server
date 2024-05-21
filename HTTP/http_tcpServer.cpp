@@ -47,9 +47,6 @@ class TCPServer
                 << "*** \n\n";
             logMessage(ss.str());
 
-
-            int nBytesRead;
-            char cBuffer[MAX_BUFFER_SIZE];
             while(true)
             {
                 logMessage("===== Waiting for a new connection ===== \n\n\n");
@@ -59,18 +56,7 @@ class TCPServer
                     exitWithError("Error on fork. Exiting.");
                 if(mPID == 0)
                 {
-                    bzero(cBuffer,MAX_BUFFER_SIZE); // initialize the buffer
-                    nBytesRead = read(mNewSocket,(char*)&cBuffer,sizeof(cBuffer));
-                    if(nBytesRead < 0)
-                        exitWithError("Failed to read bytes from client socket connection. Exiting.");
-
-                    std::ostringstream ss;
-                    ss << "----- Recieved request from client -----\n\n";
-                    logMessage(cBuffer);
-                    logMessage(ss.str());
-
-                    bzero(cBuffer,MAX_BUFFER_SIZE);
-                    sendResponse();
+                    sendAndRecieve();
                 }
                 else
                     close(mNewSocket);
@@ -123,23 +109,34 @@ class TCPServer
         }
 
 
-        void sendResponse()
+        void sendAndRecieve()
         {
-            int nBytesWritten;
+            char cBuffer[MAX_BUFFER_SIZE];
+            int nBytesWritten, nBytesRead;
             long lTotalBytesWritten {0};
-            
-            nBytesWritten = write(mNewSocket,sServerMessage.c_str(),sServerMessage.size());
-            if(nBytesWritten < 0)
-                exitWithError("Failed to write bytes to socket. Exiting.");
-            lTotalBytesWritten += nBytesWritten;                            
+            while(true)
+            {
+                // == recieve ==
+                // client successfully connects to the server...
+                bzero(cBuffer,MAX_BUFFER_SIZE); // initialize the buffer
+                nBytesRead += recv(mNewSocket,(char*)&cBuffer,sizeof(cBuffer),0); // read from new socket fd
+                if(nBytesRead < 0)
+                    exitWithError("Failed to read bytes from client socket connection. Exiting.");
+                std::ostringstream ss;
+                ss << "----- Recieved request from client -----\n\n";
+                logMessage(cBuffer);
+                logMessage(ss.str());
 
-            if(nBytesWritten == sServerMessage.size())
-            {
-                logMessage("----- Server response sent to client ------\n\n");
-            }
-            else
-            {
-                logMessage("----- Error sending response to client -----\n\n");
+                // == send ==
+                bzero(cBuffer,MAX_BUFFER_SIZE);
+                nBytesWritten = send(mSocket,(char*)&cBuffer,sizeof(cBuffer),0);
+                if(nBytesWritten < 0)
+                    exitWithError("Failed to write bytes to socket. Exiting.");
+                lTotalBytesWritten += nBytesWritten;
+                if(nBytesWritten == sServerMessage.size())
+                    logMessage(">> Server response sent to client. \n\n");
+                else
+                    logMessage(">> Error sending response to client. \n\n");                           
             }
         }
 
